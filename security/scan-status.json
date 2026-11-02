@@ -1,15 +1,15 @@
 {
-  "analysisDate": "2026-11-02T04:33:28Z",
+  "analysisDate": "2026-11-02T07:02:06Z",
   "fileName": "LiveStagix_beta.apk",
-  "fileSize": 5396382,
-  "publishedAt": "2026-11-02T04:33:11Z",
-  "publishedToRepositoryAt": "2026-11-02T04:37:11Z",
-  "releaseName": "LiveWP Beta 1.0 - Build 77",
-  "releaseTag": "v1.0-beta-77",
-  "releaseUrl": "https://github.com/devdas74/LiveWP-Releases/releases/tag/v1.0-beta-77",
-  "reportUrl": "https://www.virustotal.com/gui/file/b22a3bb54693e97fbb72d2502baf27b6280ae2138ae11d69d503d804890b96fa",
+  "fileSize": 5396358,
+  "publishedAt": "2026-11-02T06:51:35Z",
+  "publishedToRepositoryAt": "2026-11-02T07:08:48Z",
+  "releaseName": "LiveWP Beta 1.0 - Build 78",
+  "releaseTag": "v1.0-beta-78",
+  "releaseUrl": "https://github.com/LiveStagix/LiveWP-Releases/releases/tag/v1.0-beta-78",
+  "reportUrl": "https://www.virustotal.com/gui/file/bed2ff3c733ad503ef6c73f14ef46712a1a31ab3d28dc3ad59252f15e99581b5",
   "schemaVersion": 1,
-  "sha256": "b22a3bb54693e97fbb72d2502baf27b6280ae2138ae11d69d503d804890b96fa",
+  "sha256": "bed2ff3c733ad503ef6c73f14ef46712a1a31ab3d28dc3ad59252f15e99581b5",
   "signature": {
     "observedCertificateSha256": [
       "4919b3249285918c4c4c894e8b46b1713ae103201fd536d337021d5c7f205e78"
@@ -17,7 +17,7 @@
     "status": "verified",
     "tool": "Android SDK Build Tools apksigner",
     "trustedCertificateSha256": "4919b3249285918c4c4c894e8b46b1713ae103201fd536d337021d5c7f205e78",
-    "verifiedAt": "2026-11-02T04:33:26Z"
+    "verifiedAt": "2026-11-02T07:08:47Z"
   },
   "stats": {
     "confirmed-timeout": 0,
@@ -25,9 +25,9 @@
     "harmless": 0,
     "malicious": 0,
     "suspicious": 0,
-    "timeout": 3,
+    "timeout": 0,
     "type-unsupported": 8,
-    "undetected": 64
+    "undetected": 67
   },
   "status": "available"
 }

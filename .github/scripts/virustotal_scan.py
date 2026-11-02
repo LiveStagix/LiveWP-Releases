@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-RELEASES_API = "https://api.github.com/repos/devdas74/LiveWP-Releases"
+RELEASES_API = "https://api.github.com/repos/LiveStagix/LiveWP-Releases"
 VT_API = "https://www.virustotal.com/api/v3"
 APK_NAME = "LiveStagix_beta.apk"
 STATUS_PATH = pathlib.Path("security/scan-status.json")
@@ -38,6 +38,14 @@ class HttpRequestError(RuntimeError):
     def __init__(self, status_code, message):
         super().__init__(message)
         self.status_code = status_code
+
+
+class AnalysisPendingError(RuntimeError):
+    """VirusTotal has not finished processing an accepted analysis."""
+
+
+class ReportNotReadyError(RuntimeError):
+    """VirusTotal has not published completed file-analysis statistics yet."""
 
 
 def request_bytes(url, method="GET", data=None, headers=None):
@@ -289,12 +297,11 @@ def wait_for_analysis(api_key, analysis_id):
             raise RuntimeError(f"Unexpected VirusTotal analysis status: {status}")
 
     if saw_not_found:
-        raise RuntimeError(
+        raise AnalysisPendingError(
             "VirusTotal accepted the APK upload but did not make the returned analysis "
-            "ID available within the polling window. No scan result was published. "
-            "Check the file's VirusTotal page before manually retrying to avoid duplicate submissions."
+            "ID available within the polling window."
         )
-    raise RuntimeError("VirusTotal analysis did not finish within the polling window.")
+    raise AnalysisPendingError("VirusTotal analysis did not finish within the polling window.")
 
 
 def read_existing_status():
@@ -318,7 +325,7 @@ def save_report(api_key, release, apk, sha256, signature):
     attributes = file_data.get("attributes", {})
     stats = attributes.get("last_analysis_stats")
     if not isinstance(stats, dict) or not stats:
-        raise RuntimeError("VirusTotal report has no completed engine statistics.")
+        raise ReportNotReadyError("VirusTotal report has no completed engine statistics.")
 
     clean_stats = {
         str(key): int(value)
@@ -326,11 +333,11 @@ def save_report(api_key, release, apk, sha256, signature):
         if isinstance(value, int) and not isinstance(value, bool) and value >= 0
     }
     if not clean_stats:
-        raise RuntimeError("VirusTotal returned no usable engine statistics.")
+        raise ReportNotReadyError("VirusTotal returned no usable engine statistics.")
 
     timestamp = attributes.get("last_analysis_date")
     if not isinstance(timestamp, (int, float)):
-        raise RuntimeError("VirusTotal report has no valid analysis timestamp.")
+        raise ReportNotReadyError("VirusTotal report has no valid analysis timestamp.")
 
     analysis_date = dt.datetime.fromtimestamp(
         timestamp, tz=dt.timezone.utc
@@ -341,7 +348,7 @@ def save_report(api_key, release, apk, sha256, signature):
         "status": "available",
         "releaseTag": release.get("tag_name") or "",
         "releaseName": release.get("name") or release.get("tag_name") or "LiveStagix release",
-        "releaseUrl": release.get("html_url") or "https://github.com/devdas74/LiveWP-Releases/releases/latest",
+        "releaseUrl": release.get("html_url") or "https://github.com/LiveStagix/LiveWP-Releases/releases/latest",
         "publishedAt": release.get("published_at"),
         "fileName": apk.get("name") or APK_NAME,
         "fileSize": apk.get("size"),
@@ -399,12 +406,46 @@ def release_status_fields(release, apk, sha256):
         "schemaVersion": 1,
         "releaseTag": release.get("tag_name") or "",
         "releaseName": release.get("name") or release.get("tag_name") or "LiveStagix release",
-        "releaseUrl": release.get("html_url") or "https://github.com/devdas74/LiveWP-Releases/releases/latest",
+        "releaseUrl": release.get("html_url") or "https://github.com/LiveStagix/LiveWP-Releases/releases/latest",
         "publishedAt": release.get("published_at"),
         "fileName": apk.get("name") or APK_NAME,
         "fileSize": apk.get("size"),
         "sha256": sha256,
     }
+
+
+def publish_report_if_ready(api_key, release, apk, sha256, signature):
+    """Publish an existing VirusTotal file report without uploading the APK again."""
+    try:
+        result = save_report(api_key, release, apk, sha256, signature)
+    except HttpRequestError as exc:
+        if exc.status_code != 404:
+            raise
+        print("VirusTotal has no file report available for this SHA-256 yet.")
+        return False
+    except ReportNotReadyError as exc:
+        print("VirusTotal file report is not complete yet: " + str(exc))
+        return False
+
+    write_step_summary(result)
+    print("Published existing VirusTotal report by SHA-256 without another upload: " + result["reportUrl"])
+    return True
+
+
+def write_pending_status(release, apk, sha256, signature, analysis_id, message):
+    """Persist the accepted analysis ID so a later run can resume it safely."""
+    result = {
+        **release_status_fields(release, apk, sha256),
+        "status": "pending",
+        "message": message,
+        "signature": signature,
+        "analysisId": analysis_id,
+        "publishedToRepositoryAt": dt.datetime.now(dt.timezone.utc).replace(
+            microsecond=0
+        ).isoformat().replace("+00:00", "Z"),
+    }
+    write_status_file(result)
+    return result
 
 
 def signature_facts(signature):
@@ -417,6 +458,7 @@ def signature_facts(signature):
 
 def main():
     api_key = os.environ.get("VT_API_KEY", "").strip()
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
     release = load_release()
     apk, sha256 = select_apk(release)
     old_status = read_existing_status()
@@ -435,8 +477,7 @@ def main():
             print("This exact APK already has a VirusTotal report and current signing verification.")
             return
 
-        # Preserve the completed VirusTotal report; only add/update the new
-        # signature-verification metadata. Avoid uploading the same APK again.
+        # Preserve the completed VirusTotal report; only refresh signing metadata.
         old_status.update(release_status_fields(release, apk, sha256))
         old_status["signature"] = signature
         old_status["publishedToRepositoryAt"] = dt.datetime.now(
@@ -461,15 +502,71 @@ def main():
         print("No VirusTotal API credential configured; published signature verification only.")
         return
 
-    analysis_id = submit_file(api_key, content)
-    print("APK submitted to VirusTotal; waiting for analysis.")
-    wait_for_analysis(api_key, analysis_id)
+    # A file-hash lookup can recover a completed result after the analysis polling
+    # window expires. This also lets a retry publish the report without re-uploading.
+    if publish_report_if_ready(api_key, release, apk, sha256, signature):
+        return
 
-    # Keep the final report lookup outside the preceding polling request interval.
-    time.sleep(POLL_INTERVAL_SECONDS)
-    result = save_report(api_key, release, apk, sha256, signature)
-    write_step_summary(result)
-    print("Published VirusTotal result: " + result["reportUrl"])
+    pending_analysis_id = (
+        old_status.get("analysisId")
+        if same_file and old_status.get("status") == "pending"
+        else None
+    )
+
+    if pending_analysis_id:
+        analysis_id = pending_analysis_id
+        print("Resuming the previously accepted VirusTotal analysis; no new upload.")
+    elif event_name == "push":
+        # A scanner-maintenance push may trigger this workflow. It must only check
+        # for an existing hash report and must never create a duplicate submission.
+        print(
+            "No completed report is available yet. This push-triggered check will not "
+            "submit another copy of the APK."
+        )
+        return
+    else:
+        analysis_id = submit_file(api_key, content)
+        print("APK submitted to VirusTotal; waiting for analysis.")
+        write_pending_status(
+            release,
+            apk,
+            sha256,
+            signature,
+            analysis_id,
+            "VirusTotal accepted this APK. Analysis is processing; its result has not been published yet.",
+        )
+
+    try:
+        wait_for_analysis(api_key, analysis_id)
+    except AnalysisPendingError as exc:
+        print("::warning::" + str(exc))
+        if publish_report_if_ready(api_key, release, apk, sha256, signature):
+            return
+        write_pending_status(
+            release,
+            apk,
+            sha256,
+            signature,
+            analysis_id,
+            "VirusTotal accepted this APK, but analysis is still processing. A later workflow run can resume the same analysis.",
+        )
+        print("Published pending status with the existing analysis ID; no duplicate upload was made.")
+        return
+
+    # The analysis endpoint can finish before the file-report endpoint is ready.
+    # Check the file report by SHA-256 and leave a resumable pending status if needed.
+    if publish_report_if_ready(api_key, release, apk, sha256, signature):
+        return
+
+    write_pending_status(
+        release,
+        apk,
+        sha256,
+        signature,
+        analysis_id,
+        "VirusTotal finished its analysis, but the completed file report is not available yet. A later workflow run can retrieve it.",
+    )
+    print("Analysis completed, but the file report is not ready. Kept the analysis resumable.")
 
 
 if __name__ == "__main__":

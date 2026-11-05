@@ -26,6 +26,10 @@ STATUS_PATH = pathlib.Path("security/scan-status.json")
 MAX_POLL_ATTEMPTS = 18
 POLL_INTERVAL_SECONDS = 20
 
+# Retry only transient failures while downloading the published APK from GitHub.
+APK_DOWNLOAD_RETRY_DELAYS = (5, 15, 30)
+RETRYABLE_HTTP_STATUS_CODES = frozenset((408, 500, 502, 503, 504))
+
 # Trusted release-signing identity established from the independently verified
 # Build 74 APK. Keep this value fixed unless a signing-key rotation is deliberate
 # and independently reviewed.
@@ -48,24 +52,44 @@ class ReportNotReadyError(RuntimeError):
     """VirusTotal has not published completed file-analysis statistics yet."""
 
 
-def request_bytes(url, method="GET", data=None, headers=None):
+def request_bytes(url, method="GET", data=None, headers=None, retry_delays=()):
     request_headers = {"User-Agent": "LiveStagix-Security-Scan/1.0"}
     if headers:
         request_headers.update(headers)
     request = urllib.request.Request(url, data=data, headers=request_headers, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            return response.read()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        if exc.code == 429:
-            retry_after = exc.headers.get("Retry-After", "not supplied")
-            raise RuntimeError(f"VirusTotal rate limit reached; Retry-After: {retry_after}") from exc
-        raise HttpRequestError(
-            exc.code, f"HTTP {exc.code} for {url}: {detail[:500]}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Network request failed for {url}: {exc.reason}") from exc
+
+    # Retries are opt-in so VirusTotal API requests and uploads keep their existing
+    # behaviour. Only the release APK download supplies retry delays.
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 429:
+                retry_after = exc.headers.get("Retry-After", "not supplied")
+                raise RuntimeError(f"VirusTotal rate limit reached; Retry-After: {retry_after}") from exc
+
+            error = HttpRequestError(
+                exc.code, f"HTTP {exc.code} for {url}: {detail[:500]}"
+            )
+            if exc.code not in RETRYABLE_HTTP_STATUS_CODES or attempt >= len(retry_delays):
+                raise error from exc
+            retry_reason = f"HTTP {exc.code}"
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            error = RuntimeError(f"Network request failed for {url}: {getattr(exc, 'reason', exc)}")
+            if attempt >= len(retry_delays):
+                raise error from exc
+            retry_reason = str(getattr(exc, "reason", exc))
+
+        delay = retry_delays[attempt]
+        print(
+            f"Download request failed ({retry_reason}); retrying in {delay}s "
+            f"(retry {attempt + 1}/{len(retry_delays)})."
+        )
+        time.sleep(delay)
+
+    raise RuntimeError(f"Request failed after retries: {url}")
 
 
 def request_json(url, method="GET", data=None, headers=None):
@@ -129,7 +153,10 @@ def select_apk(release):
 
 
 def download_verified(apk, expected_sha256):
-    content = request_bytes(apk["browser_download_url"])
+    content = request_bytes(
+        apk["browser_download_url"],
+        retry_delays=APK_DOWNLOAD_RETRY_DELAYS,
+    )
     actual_sha256 = hashlib.sha256(content).hexdigest()
 
     if actual_sha256 != expected_sha256:

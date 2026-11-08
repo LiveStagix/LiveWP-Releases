@@ -90,6 +90,22 @@ No. Android version, graphics hardware, supported codecs, and runtime load affec
 **How do I check for updates?**  
 Open **App Information** to check manually. LiveStagix also checks when it opens and returns to the foreground; it does not require a separate daily background service. The public Stable GitHub APK checks the **LiveStagix/LiveWP-Releases** repository for updates.
 
+## How the app is built
+
+LiveStagix is an Android application built using a hybrid architecture. Its interface and Android-specific implementation are developed with separate technologies and connected into one application.
+
+| Part | Technology |
+|---|---|
+| User interface | React and TypeScript |
+| Web asset bundling | Vite |
+| Native application bridge | Capacitor |
+| Android implementation | Java and Kotlin |
+| Android build and packaging | Gradle |
+
+For a release, the interface is first compiled into web assets. Capacitor integrates those assets into the Android project, where the native components are built and packaged by Gradle. The project produces Android APK and Android App Bundle (AAB) releases for their respective distribution channels.
+
+This is a high-level overview; proprietary source code and internal implementation details are not part of this release repository.
+
 ## About
 
 This repository distributes official LiveStagix APK releases. The source code and build system are maintained separately.

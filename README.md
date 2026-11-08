@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/devdas74/LiveWP-Releases/releases/latest"><img src="https://img.shields.io/badge/Download-Latest%20APK-8B5CF6?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK"></a>
-  <a href="https://github.com/devdas74/LiveWP-Releases/releases"><img src="https://img.shields.io/badge/Browse-All%20Releases-302447?style=for-the-badge&logo=github&logoColor=white" alt="Browse all releases"></a>
+  <a href="https://github.com/LiveStagix/LiveWP-Releases/releases/latest"><img src="https://img.shields.io/badge/Download-Latest%20APK-8B5CF6?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK"></a>
+  <a href="https://github.com/LiveStagix/LiveWP-Releases/releases"><img src="https://img.shields.io/badge/Browse-All%20Releases-302447?style=for-the-badge&logo=github&logoColor=white" alt="Browse all releases"></a>
   <a href="https://github.com/sponsors/devdas74"><img src="https://img.shields.io/badge/Support-Development-6D28D9?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Support development"></a>
 </p>
 
@@ -70,7 +70,7 @@ When LiveStagix is already the active wallpaper, applying new prepared media fir
 
 ## Get started
 
-1. **[Download the latest APK](https://github.com/devdas74/LiveWP-Releases/releases/latest)** and install it.
+1. **[Download the latest APK](https://github.com/LiveStagix/LiveWP-Releases/releases/latest)** and install it.
 2. Open LiveStagix and choose a photo or video in Controls. You can also search for a photo.
 3. Open **LiveStage**, adjust the framing if needed, and tap **Prepare**.
 4. When preparation finishes, optionally tune the media or tap **Set as Wallpaper**.
@@ -88,7 +88,7 @@ No. Applying tuning creates a separate prepared version. The original source and
 No. Android version, graphics hardware, supported codecs, and runtime load affect which processing paths are available and how well they perform.
 
 **How do I check for updates?**  
-Open **Advanced Settings** to check manually. LiveStagix also checks when it opens and returns to the foreground; it does not require a separate daily background service. The GitHub APK uses GitHub releases for update discovery.
+Open **App Information** to check manually. LiveStagix also checks when it opens and returns to the foreground; it does not require a separate daily background service. The public Stable GitHub APK checks the **LiveStagix/LiveWP-Releases** repository for updates.
 
 ## About
 

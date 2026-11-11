@@ -145,7 +145,7 @@ This repository is the **official public distribution repository** for LiveWP.
 
 **[Download LiveWP from Releases](https://github.com/devdas74/LiveWP-Releases/releases)**
 
-Current releases are provided as **beta builds**.
+Stable GitHub APK releases are published here. The one-time 1.84 compatibility bridge retains the legacy `v1.0-beta-84` tag and `LiveStagix_beta.apk` asset so existing installations can update. Starting with 1.85, Stable releases use `v1.N` tags and the `LiveStagix.apk` asset. Historical releases keep their original tags and filenames.
 
 ## Repository & source code
 

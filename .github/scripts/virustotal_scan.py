@@ -206,10 +206,10 @@ def locate_apksigner():
     )
 
 
-def verify_apk_signature(content):
+def verify_apk_signature(content, filename):
     apksigner = locate_apksigner()
     with tempfile.TemporaryDirectory(prefix="livestagix-signature-") as temp_dir:
-        apk_path = pathlib.Path(temp_dir) / APK_NAME
+        apk_path = pathlib.Path(temp_dir) / filename
         apk_path.write_bytes(content)
         try:
             completed = subprocess.run(
@@ -277,7 +277,7 @@ def multipart_file(filename, content):
     return body, boundary
 
 
-def submit_file(api_key, content):
+def submit_file(api_key, content, filename):
     endpoint = VT_API + "/files"
 
     if len(content) > 32 * 1024 * 1024:
@@ -287,7 +287,7 @@ def submit_file(api_key, content):
             raise RuntimeError("VirusTotal did not return a valid large-file upload URL.")
         time.sleep(POLL_INTERVAL_SECONDS)
 
-    body, boundary = multipart_file(APK_NAME, content)
+    body, boundary = multipart_file(filename, content)
     response = request_json(
         endpoint,
         method="POST",
@@ -501,7 +501,7 @@ def main():
     content = download_verified(apk, sha256)
     print("Downloaded APK SHA-256 verified against GitHub release metadata.")
 
-    signature = verify_apk_signature(content)
+    signature = verify_apk_signature(content, apk.get("name") or DEFAULT_APK_NAME)
     print("APK signature verification: " + signature["status"])
 
     same_file = old_status.get("sha256") == sha256
@@ -559,7 +559,7 @@ def main():
         )
         return
     else:
-        analysis_id = submit_file(api_key, content)
+        analysis_id = submit_file(api_key, content, apk.get("name") or DEFAULT_APK_NAME)
         print("APK submitted to VirusTotal; waiting for analysis.")
         write_pending_status(
             release,

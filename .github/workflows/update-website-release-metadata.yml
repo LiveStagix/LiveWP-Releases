@@ -31,12 +31,13 @@ jobs:
               repo
             });
 
+            const supportedApkNames = new Set(["LiveStagix.apk", "LiveStagix_beta.apk"]);
             const asset = Array.isArray(release.assets)
-              ? release.assets.find((item) => item.name === "LiveStagix_beta.apk")
+              ? release.assets.find((item) => item && supportedApkNames.has(item.name))
               : null;
 
             if (!asset) {
-              throw new Error("The latest published release does not contain LiveStagix_beta.apk. Website metadata was not changed.");
+              throw new Error("The latest published release does not contain a supported LiveStagix APK asset. Website metadata was not changed.");
             }
 
             const metadata = {

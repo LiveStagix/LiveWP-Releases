@@ -21,7 +21,8 @@ import uuid
 
 RELEASES_API = "https://api.github.com/repos/LiveStagix/LiveWP-Releases"
 VT_API = "https://www.virustotal.com/api/v3"
-APK_NAME = "LiveStagix_beta.apk"
+APK_NAMES = ("LiveStagix.apk", "LiveStagix_beta.apk")
+DEFAULT_APK_NAME = APK_NAMES[0]
 STATUS_PATH = pathlib.Path("security/scan-status.json")
 MAX_POLL_ATTEMPTS = 18
 POLL_INTERVAL_SECONDS = 20
@@ -131,11 +132,17 @@ def select_apk(release):
         raise RuntimeError("The published release has no assets list.")
 
     apk = next(
-        (asset for asset in assets if isinstance(asset, dict) and asset.get("name") == APK_NAME),
+        (
+            asset
+            for asset in assets
+            if isinstance(asset, dict) and asset.get("name") in APK_NAMES
+        ),
         None,
     )
     if not apk:
-        raise RuntimeError(f"The release does not contain {APK_NAME}.")
+        raise RuntimeError(
+            "The release does not contain a supported APK asset: " + ", ".join(APK_NAMES)
+        )
 
     digest = apk.get("digest")
     if not isinstance(digest, str) or not digest.startswith("sha256:"):
@@ -377,7 +384,7 @@ def save_report(api_key, release, apk, sha256, signature):
         "releaseName": release.get("name") or release.get("tag_name") or "LiveStagix release",
         "releaseUrl": release.get("html_url") or "https://github.com/LiveStagix/LiveWP-Releases/releases/latest",
         "publishedAt": release.get("published_at"),
-        "fileName": apk.get("name") or APK_NAME,
+        "fileName": apk.get("name") or DEFAULT_APK_NAME,
         "fileSize": apk.get("size"),
         "sha256": sha256,
         "signature": signature,
@@ -435,7 +442,7 @@ def release_status_fields(release, apk, sha256):
         "releaseName": release.get("name") or release.get("tag_name") or "LiveStagix release",
         "releaseUrl": release.get("html_url") or "https://github.com/LiveStagix/LiveWP-Releases/releases/latest",
         "publishedAt": release.get("published_at"),
-        "fileName": apk.get("name") or APK_NAME,
+        "fileName": apk.get("name") or DEFAULT_APK_NAME,
         "fileSize": apk.get("size"),
         "sha256": sha256,
     }

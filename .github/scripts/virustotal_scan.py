@@ -700,6 +700,23 @@ def main():
         }
         if signature:
             result["signature"] = signature
+
+        # Preserve an accepted analysis ID if a later VirusTotal request fails.
+        current_packages = packages_from_status(
+            read_existing_status(), release.get("tag_name") or ""
+        )
+        current_record = current_packages.get(package_key, {})
+        if (
+            current_record.get("sha256") == sha256
+            and current_record.get("analysisId")
+        ):
+            result["status"] = "pending"
+            result["analysisId"] = current_record["analysisId"]
+            result["message"] = (
+                "The VirusTotal analysis was accepted and can be resumed. "
+                "The latest check failed: " + str(error)
+            )
+
         persist_package_record(release, package_key, result)
         raise
 

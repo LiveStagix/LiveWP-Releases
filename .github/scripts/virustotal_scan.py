@@ -391,6 +391,58 @@ def packages_from_status(status, release_tag):
     return {}
 
 
+def publish_status_update(package_key):
+    """Publish the current per-package status immediately when running in Actions."""
+    if os.environ.get("PUBLISH_SCAN_STATUS") != "true":
+        return True
+
+    try:
+        subprocess.run(
+            ["git", "add", str(STATUS_PATH)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if staged.returncode == 1:
+            subprocess.run(
+                ["git", "commit", "-m", f"Publish {package_key} security status"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        elif staged.returncode != 0:
+            raise RuntimeError(staged.stderr.strip() or "Could not inspect staged scan status.")
+
+        pushed = subprocess.run(
+            ["git", "push", "origin", "HEAD:Stable"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if pushed.returncode != 0:
+            detail = pushed.stderr.strip() or pushed.stdout.strip() or "Git push failed."
+            print(
+                f"::warning::{package_key}: immediate status publication failed; "
+                f"the workflow will retry during final publication. {detail}"
+            )
+            return False
+
+        print(f"{package_key}: security status published to Stable immediately.")
+        return True
+    except (OSError, subprocess.CalledProcessError, RuntimeError) as exc:
+        print(
+            f"::warning::{package_key}: immediate status publication failed; "
+            f"the workflow will retry during final publication. {exc}"
+        )
+        return False
+
+
 def persist_package_record(release, package_key, record):
     current = read_existing_status()
     packages = packages_from_status(current, release.get("tag_name") or "")
@@ -407,6 +459,7 @@ def persist_package_record(release, package_key, record):
         "packages": packages,
     }
     write_status_file(result)
+    publish_status_update(package_key)
     return result
 
 

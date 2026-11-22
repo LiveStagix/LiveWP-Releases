@@ -39,6 +39,7 @@ jobs:
           packages: 'build-tools;35.0.0'
 
       - name: Verify and scan each available APK package
+        id: scan
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         shell: bash
@@ -73,3 +74,9 @@ jobs:
           fi
           git commit -m "Publish VirusTotal scan status"
           git push origin HEAD:Stable
+
+      - name: Report incomplete package scans
+        if: always() && steps.scan.outputs.failures != '0'
+        run: |
+          echo "One or more package scans failed. Check the per-package status records and workflow logs."
+          exit 1

@@ -702,7 +702,14 @@ def main():
         if pending_analysis_id:
             analysis_id = pending_analysis_id
             print(f"{package_key}: resuming the accepted VirusTotal analysis; no duplicate upload.")
-        elif same_file and old_record.get("status") == "pending":
+        elif (
+            same_file
+            and old_record.get("status") == "pending"
+            and not (
+                event_name == "workflow_dispatch"
+                and os.environ.get("RETRY_UNCERTAIN_UPLOADS") == "true"
+            )
+        ):
             result = {
                 **release_status_fields(release, package_key, apk, sha256),
                 "status": "pending",
@@ -746,6 +753,11 @@ def main():
             )
             return
         else:
+            if same_file and old_record.get("status") == "pending":
+                print(
+                    f"::warning::{package_key}: manually retrying an upload with uncertain "
+                    "previous acceptance; a duplicate VirusTotal submission is possible."
+                )
             write_submitting_status(release, package_key, apk, sha256, signature)
             analysis_id = submit_file(api_key, content, apk.get("name") or DEFAULT_APK_NAME)
             print(f"{package_key}: APK submitted to VirusTotal; waiting for analysis.")

@@ -45,9 +45,6 @@ TRUSTED_SIGNER_SHA256 = "4919b3249285918c4c4c894e8b46b1713ae103201fd536d337021d5
 
 
 
-class HttpRequestError
-
-
 class HttpRequestError(RuntimeError):
     """HTTP error that retains the response status for controlled retry logic."""
 
@@ -484,19 +481,6 @@ def write_status_file(result):
         json.dumps(result, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-
-
-def release_status_fields(release, apk, sha256):
-    return {
-        "schemaVersion": 1,
-        "releaseTag": release.get("tag_name") or "",
-        "releaseName": release.get("name") or release.get("tag_name") or "LiveStagix release",
-        "releaseUrl": release.get("html_url") or "https://github.com/LiveStagix/LiveWP-Releases/releases/latest",
-        "publishedAt": release.get("published_at"),
-        "fileName": apk.get("name") or DEFAULT_APK_NAME,
-        "fileSize": apk.get("size"),
-        "sha256": sha256,
-    }
 
 
 def publish_report_if_ready(api_key, release, package_key, apk, sha256, signature):

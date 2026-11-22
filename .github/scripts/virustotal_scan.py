@@ -681,11 +681,18 @@ def main():
         if pending_analysis_id:
             analysis_id = pending_analysis_id
             print(f"{package_key}: resuming the accepted VirusTotal analysis; no duplicate upload.")
-        elif event_name == "push":
+        elif event_name in ("push", "schedule"):
+            trigger_description = (
+                "A scheduled retry" if event_name == "schedule" else "A maintenance push"
+            )
             result = {
                 **release_status_fields(release, package_key, apk, sha256),
                 "status": "not_published",
-                "message": "No completed VirusTotal report is available. A maintenance push does not submit new APK files.",
+                "message": (
+                    "No completed VirusTotal report is available. "
+                    + trigger_description
+                    + " does not submit new APK files."
+                ),
                 "signature": signature,
                 "publishedToRepositoryAt": dt.datetime.now(dt.timezone.utc).replace(
                     microsecond=0
@@ -693,7 +700,10 @@ def main():
             }
             persist_package_record(release, package_key, result)
             write_step_summary(package_key, result)
-            print(f"{package_key}: no report available; maintenance push will not submit a duplicate.")
+            print(
+                f"{package_key}: no resumable pending analysis or completed report; "
+                f"{event_name} will not submit a new APK."
+            )
             return
         else:
             analysis_id = submit_file(api_key, content, apk.get("name") or DEFAULT_APK_NAME)

@@ -559,6 +559,27 @@ def publish_report_if_ready(api_key, release, package_key, apk, sha256, signatur
     return True
 
 
+def write_submitting_status(release, package_key, apk, sha256, signature):
+    """Publish an uncertain-upload marker before contacting VirusTotal."""
+    started_at = dt.datetime.now(dt.timezone.utc).replace(
+        microsecond=0
+    ).isoformat().replace("+00:00", "Z")
+    result = {
+        **release_status_fields(release, package_key, apk, sha256),
+        "status": "pending",
+        "submissionUncertain": True,
+        "submissionStartedAt": started_at,
+        "message": (
+            "The VirusTotal upload is being initiated. If the connection is interrupted, "
+            "later checks will look up this exact file by SHA-256 without uploading it again."
+        ),
+        "signature": signature,
+        "publishedToRepositoryAt": started_at,
+    }
+    persist_package_record(release, package_key, result)
+    return result
+
+
 def write_pending_status(release, package_key, apk, sha256, signature, analysis_id, message):
     """Persist the accepted analysis ID so a later run can resume it safely."""
     result = {
@@ -681,6 +702,25 @@ def main():
         if pending_analysis_id:
             analysis_id = pending_analysis_id
             print(f"{package_key}: resuming the accepted VirusTotal analysis; no duplicate upload.")
+        elif same_file and old_record.get("status") == "pending":
+            result = {
+                **release_status_fields(release, package_key, apk, sha256),
+                "status": "pending",
+                "submissionUncertain": True,
+                "submissionStartedAt": old_record.get("submissionStartedAt"),
+                "message": (
+                    "VirusTotal has not returned a resumable analysis ID. The exact file is "
+                    "being checked by SHA-256; no duplicate upload will be started automatically."
+                ),
+                "signature": signature,
+                "lastCheckedAt": dt.datetime.now(dt.timezone.utc).replace(
+                    microsecond=0
+                ).isoformat().replace("+00:00", "Z"),
+            }
+            persist_package_record(release, package_key, result)
+            write_step_summary(package_key, result)
+            print(f"{package_key}: checking the exact file by SHA-256; no duplicate upload.")
+            return
         elif event_name in ("push", "schedule"):
             trigger_description = (
                 "A scheduled retry" if event_name == "schedule" else "A maintenance push"
@@ -706,6 +746,7 @@ def main():
             )
             return
         else:
+            write_submitting_status(release, package_key, apk, sha256, signature)
             analysis_id = submit_file(api_key, content, apk.get("name") or DEFAULT_APK_NAME)
             print(f"{package_key}: APK submitted to VirusTotal; waiting for analysis.")
             write_pending_status(
@@ -778,6 +819,19 @@ def main():
             result["message"] = (
                 "The VirusTotal analysis was accepted and can be resumed. "
                 "The latest check failed: " + str(error)
+            )
+        elif (
+            current_record.get("sha256") == sha256
+            and current_record.get("status") == "pending"
+            and current_record.get("submissionUncertain") is True
+        ):
+            result["status"] = "pending"
+            result["submissionUncertain"] = True
+            result["submissionStartedAt"] = current_record.get("submissionStartedAt")
+            result["message"] = (
+                "The upload request did not return an analysis ID. VirusTotal may have "
+                "accepted the file; automatic retries will check by SHA-256 and will not "
+                "submit another upload. Latest request error: " + str(error)
             )
 
         persist_package_record(release, package_key, result)

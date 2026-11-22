@@ -4,6 +4,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      retry_uncertain_uploads:
+        description: "Allow a new upload when VirusTotal may have accepted a previous upload but returned no analysis ID."
+        required: false
+        type: boolean
+        default: false
   schedule:
     # Resume accepted VirusTotal analyses without uploading the APK again.
     - cron: '*/15 * * * *'
@@ -113,6 +119,7 @@ jobs:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
           PACKAGE_LIST: ${{ steps.packages.outputs.packages }}
           PUBLISH_SCAN_STATUS: "true"
+          RETRY_UNCERTAIN_UPLOADS: ${{ github.event_name == 'workflow_dispatch' && inputs.retry_uncertain_uploads || false }}
         shell: bash
         run: |
           read -r -a packages <<< "$PACKAGE_LIST"

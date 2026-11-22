@@ -31,27 +31,53 @@ jobs:
               repo
             });
 
-            const supportedApkNames = new Set(["LiveStagix.apk", "LiveStagix_beta.apk"]);
-            const asset = Array.isArray(release.assets)
-              ? release.assets.find((item) => item && supportedApkNames.has(item.name))
-              : null;
+            const universalApkName = "LiveStagix.apk";
+            const supportedAbis = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"];
+            const releaseAssets = Array.isArray(release.assets) ? release.assets : [];
+            const findAsset = (name) =>
+              releaseAssets.find((item) => item && item.name === name) || null;
 
-            if (!asset) {
-              throw new Error("The latest published release does not contain a supported LiveStagix APK asset. Website metadata was not changed.");
+            const universalAsset = findAsset(universalApkName);
+            if (!universalAsset) {
+              throw new Error("The latest release is missing the universal compatibility APK.");
+            }
+
+            const abiAssets = {};
+            for (const abi of supportedAbis) {
+              const name = `LiveStagix_${abi}.apk`;
+              const asset = findAsset(name);
+              if (!asset) {
+                throw new Error(`The latest release is missing the ${abi} APK. Website metadata was not changed.`);
+              }
+              abiAssets[abi] = {
+                name: asset.name,
+                size: asset.size,
+                digest: asset.digest || null
+              };
             }
 
             const metadata = {
-              schema_version: 1,
+              schema_version: 2,
               metadata_source: "LiveWP-Releases release workflow",
               repository: `${owner}/${repo}`,
               tag_name: release.tag_name,
               name: release.name || release.tag_name,
               published_at: release.published_at || release.created_at,
               html_url: release.html_url,
+              // Keep the legacy field so an older website build can still use
+              // the universal APK while the new website understands all variants.
               asset: {
-                name: asset.name,
-                size: asset.size,
-                digest: asset.digest || null
+                name: universalAsset.name,
+                size: universalAsset.size,
+                digest: universalAsset.digest || null
+              },
+              assets: {
+                ...abiAssets,
+                universal: {
+                  name: universalAsset.name,
+                  size: universalAsset.size,
+                  digest: universalAsset.digest || null
+                }
               }
             };
 

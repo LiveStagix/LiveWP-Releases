@@ -38,16 +38,16 @@ jobs:
               releaseAssets.find((item) => item && item.name === name) || null;
 
             const universalAsset = findAsset(universalApkName);
-            if (!universalAsset) {
-              throw new Error("The latest release is missing the universal compatibility APK.");
+            if (!universalAsset || !findAsset(universalApkName + ".sha256")) {
+              throw new Error("The latest release is missing the universal APK or its SHA-256 sidecar.");
             }
 
             const abiAssets = {};
             for (const abi of supportedAbis) {
               const name = `LiveStagix_${abi}.apk`;
               const asset = findAsset(name);
-              if (!asset) {
-                throw new Error(`The latest release is missing the ${abi} APK. Website metadata was not changed.`);
+              if (!asset || !findAsset(name + ".sha256")) {
+                throw new Error(`The latest release is missing the ${abi} APK or its SHA-256 sidecar. Website metadata was not changed.`);
               }
               abiAssets[abi] = {
                 name: asset.name,

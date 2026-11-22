@@ -11,8 +11,8 @@ on:
         type: boolean
         default: false
   schedule:
-    # Resume accepted VirusTotal analyses without uploading the APK again.
-    - cron: '*/15 * * * *'
+    # Retry pending checks twice an hour without creating frequent idle runs.
+    - cron: '17,47 * * * *'
   push:
     branches:
       - Stable

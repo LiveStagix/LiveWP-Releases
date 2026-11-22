@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+  schedule:
+    # Resume accepted VirusTotal analyses without uploading the APK again.
+    - cron: '*/15 * * * *'
   push:
     branches:
       - Stable
@@ -20,31 +23,97 @@ concurrency:
 
 jobs:
   scan:
-    name: Verify and scan all published APK packages
+    name: Verify and scan published APK packages
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
       - name: Check out the Stable release branch
+        id: checkout
         uses: actions/checkout@v4
         with:
           ref: Stable
 
+      - name: Configure scan-status publisher identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Validate scanner script syntax
         run: python3 -m py_compile .github/scripts/virustotal_scan.py
 
+      - name: Select APK packages for this run
+        id: packages
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            PACKAGE_LIST="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          status_path = Path("security/scan-status.json")
+          if not status_path.is_file():
+              raise SystemExit(0)
+
+          try:
+              status = json.loads(status_path.read_text(encoding="utf-8"))
+          except (OSError, json.JSONDecodeError) as error:
+              raise SystemExit(f"Cannot read pending scan status: {error}")
+
+          package_order = ("universal", "arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+          packages = status.get("packages", {}) if isinstance(status, dict) else {}
+
+          if status.get("schemaVersion") == 2 and isinstance(packages, dict):
+              pending = [
+                  key for key in package_order
+                  if isinstance(packages.get(key), dict)
+                  and packages[key].get("status") == "pending"
+                  and isinstance(packages[key].get("analysisId"), str)
+                  and packages[key]["analysisId"].strip()
+              ]
+          elif (
+              isinstance(status, dict)
+              and status.get("status") == "pending"
+              and isinstance(status.get("analysisId"), str)
+              and status["analysisId"].strip()
+          ):
+              # Backward compatibility for the previous single-universal record.
+              pending = ["universal"]
+          else:
+              pending = []
+
+          print(" ".join(pending))
+          PY
+          )"
+          else
+            PACKAGE_LIST="universal arm64-v8a armeabi-v7a x86 x86_64"
+          fi
+
+          echo "packages=$PACKAGE_LIST" >> "$GITHUB_OUTPUT"
+          if [[ -n "$PACKAGE_LIST" ]]; then
+            echo "has_packages=true" >> "$GITHUB_OUTPUT"
+            echo "Packages selected: $PACKAGE_LIST"
+          else
+            echo "has_packages=false" >> "$GITHUB_OUTPUT"
+            echo "No pending VirusTotal analyses need a scheduled retry."
+          fi
+
       - name: Set up Android SDK Build Tools for APK signature verification
+        if: steps.packages.outputs.has_packages == 'true'
         uses: android-actions/setup-android@v4
         with:
           packages: 'build-tools;35.0.0'
 
-      - name: Verify and scan each available APK package
+      - name: Verify and scan selected APK packages
         id: scan
+        if: steps.packages.outputs.has_packages == 'true'
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          PACKAGE_LIST: ${{ steps.packages.outputs.packages }}
+          PUBLISH_SCAN_STATUS: "true"
         shell: bash
         run: |
-          packages=(universal arm64-v8a armeabi-v7a x86 x86_64)
+          read -r -a packages <<< "$PACKAGE_LIST"
           failures=0
 
           for package in "${packages[@]}"; do
@@ -61,22 +130,23 @@ jobs:
           echo "Package processing finished with ${failures} error(s)."
           echo "failures=${failures}" >> "$GITHUB_OUTPUT"
 
-      - name: Publish release verification and scan metadata on Stable
-        if: always()
+      - name: Publish any remaining scan-status changes
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add security/scan-status.json
-          if git diff --cached --quiet; then
-            echo "No scan-status update to commit."
-            exit 0
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish remaining VirusTotal scan status"
           fi
-          git commit -m "Publish VirusTotal scan status"
+
+          # Immediate per-package pushes normally keep Stable current throughout
+          # the scan. Rebase protects this final fallback if Stable advanced meanwhile.
+          git fetch origin Stable
+          git rebase FETCH_HEAD
           git push origin HEAD:Stable
 
       - name: Report incomplete package scans
-        if: always() && steps.scan.outputs.failures != '0'
+        if: always() && steps.scan.outcome == 'success' && steps.scan.outputs.failures != '0'
         run: |
           echo "One or more package scans failed. Check the per-package status records and workflow logs."
           exit 1

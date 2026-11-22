@@ -60,16 +60,18 @@ jobs:
           except (OSError, json.JSONDecodeError) as error:
               raise SystemExit(f"Cannot read pending scan status: {error}")
 
+          if not isinstance(status, dict):
+              print("")
+              raise SystemExit(0)
+
           package_order = ("universal", "arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-          packages = status.get("packages", {}) if isinstance(status, dict) else {}
+          packages = status.get("packages", {})
 
           if status.get("schemaVersion") == 2 and isinstance(packages, dict):
               pending = [
                   key for key in package_order
                   if isinstance(packages.get(key), dict)
                   and packages[key].get("status") == "pending"
-                  and isinstance(packages[key].get("analysisId"), str)
-                  and packages[key]["analysisId"].strip()
               ]
           elif (
               isinstance(status, dict)

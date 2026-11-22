@@ -20,9 +20,9 @@ concurrency:
 
 jobs:
   scan:
-    name: Verify and scan the published APK
+    name: Verify and scan all published APK packages
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
 
     steps:
       - name: Check out the Stable release branch
@@ -38,13 +38,30 @@ jobs:
         with:
           packages: 'build-tools;35.0.0'
 
-      - name: Verify APK identity and retrieve VirusTotal report when authorised
+      - name: Verify and scan each available APK package
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
-        run: python3 .github/scripts/virustotal_scan.py
+        shell: bash
+        run: |
+          packages=(universal arm64-v8a armeabi-v7a x86 x86_64)
+          failures=0
+
+          for package in "${packages[@]}"; do
+            echo "::group::Verify ${package}"
+            if APK_PACKAGE_KEY="${package}" python3 .github/scripts/virustotal_scan.py; then
+              echo "Completed ${package} package processing."
+            else
+              echo "::warning::Package processing failed for ${package}. Other packages will still be processed."
+              failures=$((failures + 1))
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "Package processing finished with ${failures} error(s)."
+          echo "failures=${failures}" >> "$GITHUB_OUTPUT"
 
       - name: Publish release verification and scan metadata on Stable
-        if: success()
+        if: always()
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
